@@ -4,6 +4,9 @@ import React, { useState } from 'react';
 import usersFromServer from './api/users';
 import photosFromServer from './api/photos';
 import albumsFromServer from './api/albums';
+import { PhotoTable } from './components/Filters/PhotoTable/PhotoTable';
+import { QueryFilter } from './components/Filters/QueryFilter/QueryFilter';
+import { ResetFilters } from './components/Filters/ResetFilter/ResetFilters';
 
 const photos = photosFromServer.map((photo) => {
   const album = albumsFromServer.find(a => a.id === photo.albumId);
@@ -16,48 +19,126 @@ const photos = photosFromServer.map((photo) => {
   };
 });
 
-function filterPhotos(arrOfPhotos,
+function filterAndSortPhotos(
+  arrOfPhotos,
   searchQuery,
   selectedUserFilter,
-  selectedAlbumFilter) {
-  if (!searchQuery && selectedUserFilter === 'All'
-    && (!selectedAlbumFilter || selectedAlbumFilter === 'All')) {
-    return arrOfPhotos;
-  }
-
-  return arrOfPhotos.filter((photo) => {
-    const preparedQuery = searchQuery.toLowerCase();
+  selectedAlbumFilter,
+  sortBy,
+  selectedSortingMethod,
+) {
+  const filteredPhotos = arrOfPhotos.filter((photo) => {
+    const preparedQuery = searchQuery ? searchQuery.toLowerCase() : '';
     const preparedPhotoName = photo.title.toLowerCase();
     const preparedUserFilter = selectedUserFilter.toLowerCase();
     const preparedUserName = photo.user.name.toLowerCase();
     const preparedAlbumTitle = photo.album.title.toLowerCase();
-    const preparedAlbumFilter = (selectedAlbumFilter
-      && selectedAlbumFilter !== 'All')
+    const preparedAlbumFilter = selectedAlbumFilter
+      && selectedAlbumFilter !== 'All'
       ? selectedAlbumFilter.toLowerCase()
       : null;
 
     return (
       (searchQuery ? preparedPhotoName.includes(preparedQuery) : true)
       && (selectedUserFilter === 'All'
-        ? true : preparedUserName === preparedUserFilter)
-      && (!preparedAlbumFilter
-        || preparedAlbumTitle === preparedAlbumFilter)
+        ? true
+        : preparedUserName === preparedUserFilter)
+      && (!preparedAlbumFilter || preparedAlbumTitle === preparedAlbumFilter)
     );
   });
+
+  if (sortBy && selectedSortingMethod) {
+    return filteredPhotos.sort((a, b) => {
+      let res = 0;
+
+      switch (sortBy) {
+        case 'id':
+          res = a.id - b.id;
+          break;
+
+        case 'photo name':
+          res = a.title.localeCompare(b.title);
+          break;
+
+        case 'album name':
+          res = a.album.title.localeCompare(b.album.title);
+          break;
+
+        case 'user name':
+          res = a.user.name.localeCompare(b.user.name);
+          break;
+
+        default:
+          break;
+      }
+
+      if (selectedSortingMethod === 'desc') {
+        res *= -1;
+      }
+
+      return res;
+    });
+  }
+
+  return filteredPhotos;
 }
 
 export const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserFilter, setSelectedUserFilter] = useState('All');
   const [selectedAlbumFilter, setSelectedAlbumFilter] = useState('All');
-  const visiblePhotos = filterPhotos(photos,
+  const [sortBy, setSortBy] = useState('');
+  const [selectedSortingMethod, setSelectedSortingMethod] = useState('');
+
+  const handleChangeSortingMethod = (field) => {
+    if (sortBy !== field) {
+      setSortBy(field);
+      setSelectedSortingMethod('asc');
+
+      return;
+    }
+
+    switch (selectedSortingMethod) {
+      case '':
+        setSelectedSortingMethod('asc');
+        break;
+
+      case 'asc':
+        setSelectedSortingMethod('desc');
+        break;
+
+      case 'desc':
+        setSelectedSortingMethod('');
+        setSortBy('');
+        break;
+
+      default:
+        break;
+    }
+  };
+
+  const checkSortingMethod = (field) => {
+    if (field !== sortBy) {
+      return 'fa-sort';
+    }
+
+    if (selectedSortingMethod === 'asc') {
+      return 'fa-sort-up';
+    }
+
+    return 'fa-sort-down';
+  };
+
+  const visiblePhotos = filterAndSortPhotos(
+    photos,
     searchQuery,
     selectedUserFilter,
-    selectedAlbumFilter);
+    selectedAlbumFilter,
+    sortBy,
+    selectedSortingMethod,
+  );
 
-  const resetFilter = () => {
-    setSearchQuery('');
-  };
+  const columns = ['ID', 'Photo name', 'Album name', 'User name'];
 
   const resetAllFilters = () => {
     setSearchQuery('');
@@ -95,32 +176,10 @@ export const App = () => {
               ))}
             </p>
 
-            <div className="panel-block">
-              <p className="control has-icons-left has-icons-right">
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Search"
-                  value={searchQuery}
-                  onChange={(event) => {
-                    setSearchQuery(event.target.value);
-                  }}
-                />
-
-                <span className="icon is-left">
-                  <i className="fas fa-search" aria-hidden="true" />
-                </span>
-
-                <span className="icon is-right">
-                  {/* eslint-disable-next-line jsx-a11y/control-has-associated-label */}
-                  <button
-                    type="button"
-                    className="delete"
-                    onClick={resetFilter}
-                  />
-                </span>
-              </p>
-            </div>
+            <QueryFilter
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+            />
 
             <div className="panel-block is-flex-wrap-wrap">
               <a
@@ -145,100 +204,16 @@ export const App = () => {
 
             </div>
 
-            <div className="panel-block">
-              <a
-                href="#/"
-                className="button is-link is-outlined is-fullwidth"
-                onClick={resetAllFilters}
-              >
-                Reset all filters
-              </a>
-            </div>
+            <ResetFilters resetAllFilters={resetAllFilters} />
           </nav>
         </div>
 
-        <div className="box table-container">
-          {photos.length === 0 ? (
-            <p data-cy="NoMatchingMessage">
-              No photos matching selected criteria
-            </p>
-          ) : (
-            <>
-              <table
-                className="table is-striped is-narrow is-fullwidth"
-              >
-                <thead>
-                  <tr>
-                    <th>
-                      <span className="is-flex is-flex-wrap-nowrap">
-                        ID
-
-                        <a href="#/">
-                          <span className="icon">
-                            <i data-cy="SortIcon" className="fas fa-sort" />
-                          </span>
-                        </a>
-                      </span>
-                    </th>
-
-                    <th>
-                      <span className="is-flex is-flex-wrap-nowrap">
-                        Photo name
-
-                        <a href="#/">
-                          <span className="icon">
-                            <i className="fas fa-sort-down" />
-                          </span>
-                        </a>
-                      </span>
-                    </th>
-
-                    <th>
-                      <span className="is-flex is-flex-wrap-nowrap">
-                        Album name
-
-                        <a href="#/">
-                          <span className="icon">
-                            <i className="fas fa-sort-up" />
-                          </span>
-                        </a>
-                      </span>
-                    </th>
-
-                    <th>
-                      <span className="is-flex is-flex-wrap-nowrap">
-                        User name
-
-                        <a href="#/">
-                          <span className="icon">
-                            <i className="fas fa-sort" />
-                          </span>
-                        </a>
-                      </span>
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {visiblePhotos.map(photo => (
-                    <tr key={photo.id}>
-                      <td className="has-text-weight-bold">
-                        {photo.id}
-                      </td>
-
-                      <td>{photo.title}</td>
-                      <td>{photo.album.title}</td>
-
-                      <td className="has-text-link">
-                        {photo.user.name}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
+        <PhotoTable
+          visiblePhotos={visiblePhotos}
+          columns={columns}
+          handleChangeSortingMethod={handleChangeSortingMethod}
+          checkSortingMethod={checkSortingMethod}
+        />
       </div>
     </div>
   );
